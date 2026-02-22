@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"os"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/mdp/qrterminal"
 	"github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	waLog "go.mau.fi/whatsmeow/util/log"
-	_ "modernc.org/sqlite"
 )
 
 type WhatsAppClient struct {
@@ -22,7 +22,7 @@ func (w *WhatsAppClient) Connect() {
 
 	dbLog := waLog.Stdout("Database", "DEBUG", true)
 	w.Ctx = context.Background()
-	container, err := sqlstore.New(w.Ctx, "sqlite", "file:examplestore.db?_pragma=foreign_keys(1)", dbLog)
+	container, err := sqlstore.New(w.Ctx, "pgx", os.Getenv("DATABASE_URL"), dbLog)
 	if err != nil {
 		panic(err)
 	}
