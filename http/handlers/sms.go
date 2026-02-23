@@ -7,6 +7,7 @@ import (
 )
 
 func SmsHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method != http.MethodPost {
@@ -30,7 +31,6 @@ func SmsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	defer r.Body.Close()
 
 	if req.Phone == "" || req.Message == "" {
 		resp := models.SendMessageResponse{Success: false, Message: "Phone and message are required"}
