@@ -39,7 +39,7 @@ func SmsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := whatAppClient.SendMessage(req.Phone, req.Message)
+	id, err := whatAppClient.SendMessage(req.Phone, req.Message)
 	if err != nil {
 		resp := models.SendMessageResponse{Success: false, Message: err.Error()}
 		w.WriteHeader(http.StatusInternalServerError)
@@ -47,7 +47,7 @@ func SmsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := models.SendMessageResponse{Success: true, Message: "Message sent successfully"}
+	resp := models.SendMessageResponse{Success: true, Message: "Message sent successfully", ID: id}
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
 }

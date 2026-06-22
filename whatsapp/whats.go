@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	// _ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal"
 	"github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
@@ -22,7 +23,7 @@ func (w *WhatsAppClient) Connect() {
 
 	dbLog := waLog.Stdout("Database", "DEBUG", true)
 	w.Ctx = context.Background()
-	container, err := sqlstore.New(w.Ctx, "pgx", os.Getenv("DATABASE_URL"), dbLog)
+	container, err := sqlstore.New(w.Ctx, "sqlite3", os.Getenv("DATABASE_URL"), dbLog)
 	if err != nil {
 		panic(err)
 	}

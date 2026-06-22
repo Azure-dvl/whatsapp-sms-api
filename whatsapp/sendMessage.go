@@ -8,7 +8,7 @@ import (
 
 var lastMessageId types.MessageID
 
-func (w *WhatsAppClient) SendMessage(number string, message string) error {
+func (w *WhatsAppClient) SendMessage(number string, message string) (string, error) {
 	jid := types.NewJID(number, types.DefaultUserServer)
 
 	waMessage := &waE2E.Message{
@@ -17,7 +17,10 @@ func (w *WhatsAppClient) SendMessage(number string, message string) error {
 
 	msg, err := w.Client.SendMessage(w.Ctx, jid, waMessage)
 	lastMessageId = msg.ID
-	return err
+	if err != nil {
+		return "", err
+	}
+	return msg.ID, nil
 }
 
 func (w *WhatsAppClient) SendReaction(number string, reaction string) error {

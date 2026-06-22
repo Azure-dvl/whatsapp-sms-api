@@ -8,4 +8,5 @@ type SendMessageRequest struct {
 type SendMessageResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
+	ID      string `json:"id"`
 }
