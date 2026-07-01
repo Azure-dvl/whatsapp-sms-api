@@ -10,12 +10,16 @@ import (
 	"github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
+
+	"main/webhook"
 )
 
 type WhatsAppClient struct {
 	Client *whatsmeow.Client
 	Ctx    context.Context
+	Dispatcher *webhook.WebhookDispatcher
 }
 
 func (w *WhatsAppClient) Connect() {
@@ -34,6 +38,17 @@ func (w *WhatsAppClient) Connect() {
 	clientLog := waLog.Stdout("Client", "INFO", true)
 	w.Client = whatsmeow.NewClient(deviceStore, clientLog)
 	// w.Client.AddEventHandler(EventHandler)
+
+		// evento del webhook
+	w.Client.AddEventHandler(func(evt interface{}) {
+		// Ojito aca...te lo puse como funcion para la misma talla que me dijiste de las reacciones tu metele un case para cada tipo (lo declaras en models)
+		switch v := evt.(type) {
+		case *events.Message:
+			if w.Dispatcher != nil {
+				webhook.HandleIncomingMessage(w.Dispatcher, v)
+			}
+		}
+	})
 
 	if w.Client.Store.ID == nil {
 		// No ID stored, new login

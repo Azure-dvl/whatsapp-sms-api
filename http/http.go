@@ -4,16 +4,20 @@ import (
 	"fmt"
 	"log"
 	"main/http/handlers"
+	"main/webhook"
 	"main/whatsapp"
 	"net/http"
 	"os"
 )
 
-func SetupHandlers(client *whatsapp.WhatsAppClient) {
+func SetupHandlers(client *whatsapp.WhatsAppClient, webhookHandler *webhook.WebhookHandler) {
 	handlers.SetClient(client)
 	http.Handle("/sms", http.HandlerFunc(handlers.SmsHandler))
 	http.Handle("/reaction", http.HandlerFunc(handlers.ReactionHandler))
 	http.Handle("/qr", http.HandlerFunc(handlers.QRHandler))
+	
+	// El webhook
+	http.Handle("/webhook", webhookHandler)
 }
 
 func Serve() {
