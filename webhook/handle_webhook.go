@@ -24,14 +24,13 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-
 func (h *WebhookHandler) register(w http.ResponseWriter, r *http.Request) {
 	// POST
 
 	var req WebhookReg
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"success": false, "message": "Invalid JSON body",
 		})
 		return
@@ -39,7 +38,7 @@ func (h *WebhookHandler) register(w http.ResponseWriter, r *http.Request) {
 
 	if req.Phone == "" || req.URL == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"success": false, "message": "Phone and URL are required",
 		})
 		return
@@ -48,14 +47,14 @@ func (h *WebhookHandler) register(w http.ResponseWriter, r *http.Request) {
 	err := h.Repo.Register(r.Context(), req.Phone, req.URL, req.Secret)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"success": false, "message": err.Error(),
 		})
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"success": true, "message": "Webhook registered",
 	})
 }
@@ -66,7 +65,7 @@ func (h *WebhookHandler) delete(w http.ResponseWriter, r *http.Request) {
 	phone := r.URL.Query().Get("phone")
 	if phone == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"success": false, "message": "Phone query param is required",
 		})
 		return
@@ -75,9 +74,9 @@ func (h *WebhookHandler) delete(w http.ResponseWriter, r *http.Request) {
 	err := h.Repo.Delete(r.Context(), phone)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "message": err.Error()})
+		json.NewEncoder(w).Encode(map[string]any{"success": false, "message": err.Error()})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Webhook deleted"})
+	json.NewEncoder(w).Encode(map[string]any{"success": true, "message": "Webhook deleted"})
 }

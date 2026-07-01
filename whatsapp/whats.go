@@ -17,8 +17,8 @@ import (
 )
 
 type WhatsAppClient struct {
-	Client *whatsmeow.Client
-	Ctx    context.Context
+	Client     *whatsmeow.Client
+	Ctx        context.Context
 	Dispatcher *webhook.WebhookDispatcher
 }
 
@@ -37,18 +37,18 @@ func (w *WhatsAppClient) Connect() {
 	}
 	clientLog := waLog.Stdout("Client", "INFO", true)
 	w.Client = whatsmeow.NewClient(deviceStore, clientLog)
-	// w.Client.AddEventHandler(EventHandler)
+	w.Client.AddEventHandler(w.EventHandler)
 
-		// evento del webhook
-	w.Client.AddEventHandler(func(evt interface{}) {
-		// Ojito aca...te lo puse como funcion para la misma talla que me dijiste de las reacciones tu metele un case para cada tipo (lo declaras en models)
-		switch v := evt.(type) {
-		case *events.Message:
-			if w.Dispatcher != nil {
-				webhook.HandleIncomingMessage(w.Dispatcher, v)
-			}
-		}
-	})
+	// evento del webhook
+	// w.Client.AddEventHandler(func(evt interface{}) {
+	// 	// Ojito aca...te lo puse como funcion para la misma talla que me dijiste de las reacciones tu metele un case para cada tipo (lo declaras en models)
+	// 	switch v := evt.(type) {
+	// 	case *events.Message:
+	// 		if w.Dispatcher != nil {
+	// 			webhook.HandleIncomingMessage(w.Dispatcher, v)
+	// 		}
+	// 	}
+	// })
 
 	if w.Client.Store.ID == nil {
 		// No ID stored, new login
@@ -89,9 +89,13 @@ func (w *WhatsAppClient) Disconnect() {
 	w.Client.Disconnect()
 }
 
-// func EventHandler(evt interface{}) {
-// 	switch v := evt.(type) {
-// 	case *events.Message:
-// 		fmt.Println("Received a message!", v.Message.GetConversation())
-// 	}
-// }
+func (w *WhatsAppClient) EventHandler(evt interface{}) {
+	switch v := evt.(type) {
+	case *events.Message:
+		fmt.Println("Received a message!", v.Message.GetConversation())
+		if w.Dispatcher != nil {
+			fmt.Println("Sending to dispatcher")
+			webhook.HandleIncomingMessage(w.Dispatcher, v)
+		}
+	}
+}

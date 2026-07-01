@@ -20,13 +20,13 @@ func main() {
 
 	// Webhook
 	db, err := sql.Open("pgx", os.Getenv("DATABASE_URL")) // lo puse por env y no tengo como probar esta talla ahora mismo so te toca testear esto o hosteralo para yo testearlo...Tu primero revisa bien el codigo.
-	if err != nil{
+	if err != nil {
 		panic(err)
 	}
 	defer db.Close()
 
 	repo := webhook.NewWebhookRepository(db)
-	repo.CreateTable(nil)
+	repo.CreateTable(whatsAppClient.Ctx)
 
 	dispatcher := webhook.NewWebhookDispatcher(repo)
 	whatsAppClient.Dispatcher = dispatcher

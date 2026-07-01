@@ -10,35 +10,40 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 )
 
 type WebhookDispatcher struct {
-	repo 	*WebhookRepository
-	client 	*http.Client
+	repo   *WebhookRepository
+	client *http.Client
 }
 
 func NewWebhookDispatcher(repo *WebhookRepository) *WebhookDispatcher {
 	return &WebhookDispatcher{
-		repo: repo,
+		repo:   repo,
 		client: &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
-
 func (d *WebhookDispatcher) Dispatch(ctx context.Context, evt WebhookPay) {
-	go func(){
+	fmt.Println("entering to Dispatch")
+	go func() {
+		fmt.Println("A")
 		phone := extractPhone(evt.From)
 		entry, err := d.repo.GetByPhone(ctx, phone)
-		
+		fmt.Println("B")
+
 		if err != nil || entry == nil {
 			return
 		}
 
+		fmt.Println("Sending the dispatch to retry function")
 		d.sendWithRetry(entry, evt)
 	}()
+	fmt.Println("outgoing from Dispatch")
 }
 
 // 3 intentos tops de fallo
@@ -50,9 +55,10 @@ func (d *WebhookDispatcher) sendWithRetry(entry *WebhookEntry, payload WebhookPa
 		req, _ := http.NewRequest("POST", entry.URL, bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Webhook-Signature", "sha256="+signature)
-        req.Header.Set("X-Webhook-Event", payload.Event)
+		req.Header.Set("X-Webhook-Event", payload.Event)
 
 		resp, err := d.client.Do(req)
+		fmt.Println("Request sent")
 		if err == nil && resp.StatusCode < 300 {
 			resp.Body.Close()
 			return
