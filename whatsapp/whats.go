@@ -6,52 +6,160 @@ import (
 	"os"
 	"sync"
 
+	"main/http/models"
+
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/mdp/qrterminal"
 	"github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"google.golang.org/protobuf/proto"
+)
+
+type MultimediaType string
+
+const (
+	MultimediaNone  MultimediaType = ""
+	MultimediaImage MultimediaType = "image"
+	MultimediaVideo MultimediaType = "video"
+	MultimediaAudio MultimediaType = "audio"
+	MultimediaDocument MultimediaType = "document"
 )
 
 type ReceivedMessage struct {
-	ID   string `json:"id"`
-	From string `json:"from"`
-	Text string `json:"text"`
+	ID              string         `json:"id"`
+	From            string         `json:"from"`
+	FromPN          string         `json:"from_pn,omitempty"`
+	Text            string         `json:"text"`
+	IsFromMe        bool           `json:"is_from_me"`
+	MultimediaType  MultimediaType `json:"multimedia_type,omitempty"`
+	MultimediaCaption string       `json:"multimedia_caption,omitempty"`
 }
 
-func getSenderPN(v *events.Message) string {
-	sender := v.Info.Sender
-	// If it's a group message, sender is the person who sent it
-	if v.Info.IsGroup && !sender.IsEmpty() {
-		if v.Info.AddressingMode == types.AddressingModeLID && !v.Info.SenderAlt.IsEmpty() {
-			return v.Info.SenderAlt.ToNonAD().String()
+type forwardableMessage struct {
+	text               string
+	imageURL           string
+	imageDirectPath    string
+	imageMediaKey      []byte
+	imageFileEncSHA256 []byte
+	imageFileSHA256    []byte
+	imageFileLength    uint64
+	imageMimeType      string
+	imageCaption       string
+	imageJPEGThumbnail []byte
+	imageHeight        uint32
+	imageWidth         uint32
+}
+
+func getMessageFields(v *events.Message) (text string, fm *forwardableMessage) {
+	text = v.Message.GetConversation()
+	if text == "" && v.Message.GetExtendedTextMessage() != nil {
+		text = v.Message.GetExtendedTextMessage().GetText()
+	}
+	
+
+	if img := v.Message.GetImageMessage(); img != nil {
+		fm = &forwardableMessage{
+			imageURL:           img.GetURL(),
+			imageDirectPath:    img.GetDirectPath(),
+			imageMediaKey:      img.GetMediaKey(),
+			imageFileEncSHA256: img.GetFileEncSHA256(),
+			imageFileSHA256:    img.GetFileSHA256(),
+			imageFileLength:    img.GetFileLength(),
+			imageMimeType:      img.GetMimetype(),
+			imageCaption:       img.GetCaption(),
+			imageJPEGThumbnail: img.GetJPEGThumbnail(),
+			imageHeight:        img.GetHeight(),
+			imageWidth:         img.GetWidth(),
 		}
-		return sender.ToNonAD().String()
+		if text == "" {
+			text = img.GetCaption()
+		}
 	}
-	// For DMs, the sender IS the chat
+
+	return text, fm
+}
+
+func (fm *forwardableMessage) buildMessage() *waE2E.Message {
+	msgText := fm.text
+	if msgText == "" {
+		msgText = fm.imageCaption
+	} else if fm.imageCaption != "" {
+		msgText = fm.text + "\n" + fm.imageCaption
+	}
+
+	if fm.imageURL != "" {
+		return &waE2E.Message{
+			ImageMessage: &waE2E.ImageMessage{
+				URL:           &fm.imageURL,
+				DirectPath:    &fm.imageDirectPath,
+				MediaKey:      fm.imageMediaKey,
+				FileEncSHA256: fm.imageFileEncSHA256,
+				FileSHA256:    fm.imageFileSHA256,
+				FileLength:    &fm.imageFileLength,
+				Mimetype:      proto.String(fm.imageMimeType),
+				Caption:       proto.String(msgText),
+				JPEGThumbnail: fm.imageJPEGThumbnail,
+				Height:        &fm.imageHeight,
+				Width:         &fm.imageWidth,
+				ContextInfo: &waE2E.ContextInfo{
+					IsForwarded:     proto.Bool(true),
+					ForwardingScore: proto.Uint32(1),
+				},
+			},
+		}
+	} else if fm.text != "" {
+		return &waE2E.Message{
+			ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+				Text: proto.String(fm.text),
+				ContextInfo: &waE2E.ContextInfo{
+					IsForwarded:     proto.Bool(true),
+					ForwardingScore: proto.Uint32(1),
+				},
+			},
+		}
+	}
+	return nil
+}
+
+func (w *WhatsAppClient) getSenderPN(v *events.Message) (string, string) {
+	sender := v.Info.Sender
+	fromStr := sender.ToNonAD().String()
+	fromPN := ""
+
+	if v.Info.AddressingMode == types.AddressingModeLID {
+		if !v.Info.SenderAlt.IsEmpty() {
+			fromPN = v.Info.SenderAlt.ToNonAD().String()
+		}
+	}
+
+	if v.Info.IsGroup && !sender.IsEmpty() {
+		return fromStr, fromPN
+	}
+
 	target := v.Info.Chat
-	if v.Info.AddressingMode == types.AddressingModeLID && !v.Info.SenderAlt.IsEmpty() {
-		return v.Info.SenderAlt.ToNonAD().String()
-	}
-	return target.ToNonAD().String()
+	return target.ToNonAD().String(), fromPN
 }
 
 type WhatsAppClient struct {
 	Client *whatsmeow.Client
 	Ctx    context.Context
 
-	mu              sync.RWMutex
-	receivedMessages []ReceivedMessage
+	mu               sync.RWMutex
+	receivedMessages  []ReceivedMessage
+	forwardableMessages map[string]*forwardableMessage
 
 	Connected chan struct{}
 }
 
 func NewWhatsAppClient() *WhatsAppClient {
 	return &WhatsAppClient{
-		Connected: make(chan struct{}),
+		Connected:          make(chan struct{}),
+		forwardableMessages: make(map[string]*forwardableMessage),
 	}
 }
 
@@ -66,25 +174,107 @@ func (w *WhatsAppClient) GetReceivedMessages() []ReceivedMessage {
 func (w *WhatsAppClient) EventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
-		sender := getSenderPN(v)
-		text := v.Message.GetConversation()
-		if text == "" && v.Message.GetExtendedTextMessage() != nil {
-			text = v.Message.GetExtendedTextMessage().GetText()
+		sender, senderPN := w.getSenderPN(v)
+		text, fm := getMessageFields(v)
+		multimediaType := MultimediaNone
+		if fm != nil && fm.imageURL != "" {
+			multimediaType = MultimediaImage
 		}
-		if text == "" {
-			text = "[Non-text message]"
+
+		// Store in received message list
+		rm := ReceivedMessage{
+			ID:       v.Info.ID,
+			From:     sender,
+			FromPN:   senderPN,
+			Text:     text,
+			IsFromMe: v.Info.IsFromMe,
+			MultimediaType: multimediaType,
+		}
+		if fm != nil {
+			rm.MultimediaCaption = fm.imageCaption
 		}
 
 		w.mu.Lock()
-		w.receivedMessages = append(w.receivedMessages, ReceivedMessage{
-			ID:   v.Info.ID,
-			From: sender,
-			Text: text,
-		})
+		w.receivedMessages = append(w.receivedMessages, rm)
+		// Also store the forwardable message data keyed by ID
+		if fm != nil {
+			if w.forwardableMessages == nil {
+				w.forwardableMessages = make(map[string]*forwardableMessage)
+			}
+			w.forwardableMessages[v.Info.ID] = fm
+		}
 		w.mu.Unlock()
 
-		fmt.Printf("📩 Message from %s: %s\n", sender, text)
+		if !v.Info.IsFromMe {
+			fmt.Printf("📩 Message from %s: %s\n", sender, text)
+		}
 	}
+}
+
+func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) []models.ForwardResult {
+	results := make([]models.ForwardResult, 0, len(recipients))
+
+	w.mu.RLock()
+	fm, ok := w.forwardableMessages[id]
+	w.mu.RUnlock()
+
+	// If not found as forwardable, treat as text-only
+	if !ok {
+		for _, recipient := range recipients {
+			text := ""
+			for _, rm := range w.receivedMessages {
+				if rm.ID == id {
+					text = rm.Text
+					break
+				}
+			}
+			jid, err := parseJID(recipient)
+			if err != nil {
+				results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: err.Error()})
+				continue
+			}
+			waMessage := &waE2E.Message{
+				ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+					Text: proto.String(text),
+					ContextInfo: &waE2E.ContextInfo{
+						IsForwarded:     proto.Bool(true),
+						ForwardingScore: proto.Uint32(1),
+					},
+				},
+			}
+			_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)
+			if err != nil {
+				results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: err.Error()})
+			} else {
+				results = append(results, models.ForwardResult{Recipient: recipient, Success: true})
+			}
+		}
+		return results
+	}
+
+	// Forward using the original message content
+	waMessage := fm.buildMessage()
+	if waMessage == nil {
+		for _, recipient := range recipients {
+			results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: "Empty message"})
+		}
+		return results
+	}
+
+	for _, recipient := range recipients {
+		jid, err := parseJID(recipient)
+		if err != nil {
+			results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: err.Error()})
+			continue
+		}
+		_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)
+		if err != nil {
+			results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: err.Error()})
+		} else {
+			results = append(results, models.ForwardResult{Recipient: recipient, Success: true})
+		}
+	}
+	return results
 }
 
 func (w *WhatsAppClient) Connect() {

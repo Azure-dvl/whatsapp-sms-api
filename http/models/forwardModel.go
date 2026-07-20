@@ -12,6 +12,11 @@ type ForwardRequest struct {
 	Recipients []string       `json:"recipients"`
 }
 
+type ForwardReceivedRequest struct {
+	MessageID  string   `json:"message_id"`
+	Recipients []string `json:"recipients"`
+}
+
 type ForwardResult struct {
 	Recipient string `json:"recipient"`
 	Success   bool   `json:"success"`

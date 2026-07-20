@@ -16,6 +16,7 @@ func SetupHandlers(client *whatsapp.WhatsAppClient) {
 	http.Handle("/reaction", http.HandlerFunc(handlers.ReactionHandler))
 	http.Handle("/qr", http.HandlerFunc(handlers.QRHandler))
 	http.Handle("/inbox", http.HandlerFunc(handlers.InboxHandler))
+	http.Handle("/forward_received", http.HandlerFunc(handlers.ForwardReceivedHandler))
 }
 
 func Serve() {
