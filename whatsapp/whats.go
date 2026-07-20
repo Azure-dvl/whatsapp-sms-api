@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"main/http/models"
@@ -171,11 +172,74 @@ func (w *WhatsAppClient) GetReceivedMessages() []ReceivedMessage {
 	return result
 }
 
+func (w *WhatsAppClient) handleCommand(v *events.Message, text string) bool {
+	if !strings.HasPrefix(text, "/") {
+		return false
+	}
+
+	var response string
+	parts := strings.SplitN(text, " ", 2)
+	command := strings.ToLower(parts[0])
+
+	switch command {
+	case "/start":
+		response = `¡Bienvenido! 🎉
+
+Soy un bot diseñado para ayudarte a promocionar tus productos de venta online. Conmigo podrás reenviar tus publicaciones a múltiples grupos y canales de forma automática.
+
+📌 Usa /new para comenzar a reenviar un mensaje.
+📌 Usa /settings para configurar los grupos, canales y horarios.
+📌 Usa /help para ver la lista de comandos disponibles.
+
+¡Tu número ha sido registrado! Ahora puedes usar /new para empezar.`
+	case "/new":
+		response = `Esperando el mensaje que se va a reenviar... 📨
+
+Envíame el mensaje (texto o imagen) que quieres publicar en los grupos y canales configurados.`
+	case "/settings":
+		response = `⚙️ Configuración disponible:
+
+/forward — Configurar los números, grupos y canales de destino.
+/time — Configurar el horario de reenvío (ej: cada día a las 10:00 AM durante 3 días).
+
+Usa /forward o /time para más detalles.`
+	case "/help":
+		response = `📖 Comandos disponibles:
+
+/start — Registrarse y recibir información del bot.
+/new — Enviar un nuevo mensaje para reenviar.
+/settings — Ver y configurar opciones de reenvío.
+/help — Mostrar esta ayuda.
+
+🔧 Más funciones próximamente.`
+	default:
+		response = `Comando no reconocido. Usa /help para ver los comandos disponibles.`
+	}
+
+	targetJID := v.Info.Chat
+	_, err := w.Client.SendMessage(w.Ctx, targetJID, &waE2E.Message{
+		Conversation: proto.String(response),
+	})
+	if err != nil {
+		fmt.Printf("Error sending command response: %v\n", err)
+	}
+
+	return true
+}
+
 func (w *WhatsAppClient) EventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
 		sender, senderPN := w.getSenderPN(v)
 		text, fm := getMessageFields(v)
+
+		if !v.Info.IsFromMe {
+			// Check if it's a command
+			if w.handleCommand(v, text) {
+				return
+			}
+		}
+
 		multimediaType := MultimediaNone
 		if fm != nil && fm.imageURL != "" {
 			multimediaType = MultimediaImage
