@@ -4,18 +4,87 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/mdp/qrterminal"
 	"github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
+
+type ReceivedMessage struct {
+	ID   string `json:"id"`
+	From string `json:"from"`
+	Text string `json:"text"`
+}
+
+func getSenderPN(v *events.Message) string {
+	sender := v.Info.Sender
+	// If it's a group message, sender is the person who sent it
+	if v.Info.IsGroup && !sender.IsEmpty() {
+		if v.Info.AddressingMode == types.AddressingModeLID && !v.Info.SenderAlt.IsEmpty() {
+			return v.Info.SenderAlt.ToNonAD().String()
+		}
+		return sender.ToNonAD().String()
+	}
+	// For DMs, the sender IS the chat
+	target := v.Info.Chat
+	if v.Info.AddressingMode == types.AddressingModeLID && !v.Info.SenderAlt.IsEmpty() {
+		return v.Info.SenderAlt.ToNonAD().String()
+	}
+	return target.ToNonAD().String()
+}
 
 type WhatsAppClient struct {
 	Client *whatsmeow.Client
 	Ctx    context.Context
+
+	mu              sync.RWMutex
+	receivedMessages []ReceivedMessage
+
+	Connected chan struct{}
+}
+
+func NewWhatsAppClient() *WhatsAppClient {
+	return &WhatsAppClient{
+		Connected: make(chan struct{}),
+	}
+}
+
+func (w *WhatsAppClient) GetReceivedMessages() []ReceivedMessage {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	result := make([]ReceivedMessage, len(w.receivedMessages))
+	copy(result, w.receivedMessages)
+	return result
+}
+
+func (w *WhatsAppClient) EventHandler(evt interface{}) {
+	switch v := evt.(type) {
+	case *events.Message:
+		sender := getSenderPN(v)
+		text := v.Message.GetConversation()
+		if text == "" && v.Message.GetExtendedTextMessage() != nil {
+			text = v.Message.GetExtendedTextMessage().GetText()
+		}
+		if text == "" {
+			text = "[Non-text message]"
+		}
+
+		w.mu.Lock()
+		w.receivedMessages = append(w.receivedMessages, ReceivedMessage{
+			ID:   v.Info.ID,
+			From: sender,
+			Text: text,
+		})
+		w.mu.Unlock()
+
+		fmt.Printf("📩 Message from %s: %s\n", sender, text)
+	}
 }
 
 func (w *WhatsAppClient) Connect() {
@@ -33,7 +102,7 @@ func (w *WhatsAppClient) Connect() {
 	}
 	clientLog := waLog.Stdout("Client", "INFO", true)
 	w.Client = whatsmeow.NewClient(deviceStore, clientLog)
-	// w.Client.AddEventHandler(EventHandler)
+	w.Client.AddEventHandler(w.EventHandler)
 
 	if w.Client.Store.ID == nil {
 		// No ID stored, new login
@@ -60,12 +129,14 @@ func (w *WhatsAppClient) Connect() {
 				fmt.Println("Login event:", evt.Event)
 			}
 		}
+		close(w.Connected)
 	} else {
 		// Already logged in, just connect
 		err = w.Client.Connect()
 		if err != nil {
 			panic(err)
 		}
+		close(w.Connected)
 	}
 }
 
@@ -73,10 +144,3 @@ func (w *WhatsAppClient) Disconnect() {
 	// Disconnect the client when done
 	w.Client.Disconnect()
 }
-
-// func EventHandler(evt interface{}) {
-// 	switch v := evt.(type) {
-// 	case *events.Message:
-// 		fmt.Println("Received a message!", v.Message.GetConversation())
-// 	}
-// }

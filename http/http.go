@@ -12,8 +12,10 @@ import (
 func SetupHandlers(client *whatsapp.WhatsAppClient) {
 	handlers.SetClient(client)
 	http.Handle("/sms", http.HandlerFunc(handlers.SmsHandler))
+	http.Handle("/forward", http.HandlerFunc(handlers.ForwardHandler))
 	http.Handle("/reaction", http.HandlerFunc(handlers.ReactionHandler))
 	http.Handle("/qr", http.HandlerFunc(handlers.QRHandler))
+	http.Handle("/inbox", http.HandlerFunc(handlers.InboxHandler))
 }
 
 func Serve() {
