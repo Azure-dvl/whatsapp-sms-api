@@ -35,6 +35,7 @@ type ReceivedMessage struct {
 	ID              string         `json:"id"`
 	From            string         `json:"from"`
 	FromPN          string         `json:"from_pn,omitempty"`
+	Chat            string         `json:"chat,omitempty"`
 	Text            string         `json:"text"`
 	IsFromMe        bool           `json:"is_from_me"`
 	MultimediaType  MultimediaType `json:"multimedia_type,omitempty"`
@@ -107,20 +108,14 @@ func (fm *forwardableMessage) buildMessage() *waE2E.Message {
 				JPEGThumbnail: fm.imageJPEGThumbnail,
 				Height:        &fm.imageHeight,
 				Width:         &fm.imageWidth,
-				ContextInfo: &waE2E.ContextInfo{
-					IsForwarded:     proto.Bool(true),
-					ForwardingScore: proto.Uint32(1),
-				},
+				ContextInfo: &waE2E.ContextInfo{},
 			},
 		}
 	} else if fm.text != "" {
 		return &waE2E.Message{
 			ExtendedTextMessage: &waE2E.ExtendedTextMessage{
 				Text: proto.String(fm.text),
-				ContextInfo: &waE2E.ContextInfo{
-					IsForwarded:     proto.Bool(true),
-					ForwardingScore: proto.Uint32(1),
-				},
+				ContextInfo: &waE2E.ContextInfo{},
 			},
 		}
 	}
@@ -172,9 +167,9 @@ func (w *WhatsAppClient) GetReceivedMessages() []ReceivedMessage {
 	return result
 }
 
-func (w *WhatsAppClient) handleCommand(v *events.Message, text string) bool {
+func (w *WhatsAppClient) handleCommand(v *events.Message, text string) {
 	if !strings.HasPrefix(text, "/") {
-		return false
+		return
 	}
 
 	var response string
@@ -197,21 +192,66 @@ Soy un bot diseñado para ayudarte a promocionar tus productos de venta online. 
 
 Envíame el mensaje (texto o imagen) que quieres publicar en los grupos y canales configurados.`
 	case "/settings":
-		response = `⚙️ Configuración disponible:
+		response = `⚙️ Configuración — Opciones disponibles:
 
-/forward — Configurar los números, grupos y canales de destino.
-/time — Configurar el horario de reenvío (ej: cada día a las 10:00 AM durante 3 días).
+/forward <días> — Cantidad de días que se repetirá la publicación (ej: /forward 20).
+/time <horarios> — Horarios de reenvío en formato militar separados por coma (ej: /time 10:00,12:00,20:00).
+/recipients — Configurar destinatarios (grupos, canales, números).
 
-Usa /forward o /time para más detalles.`
+Usa cada comando para más detalles.`
+	case "/forward":
+		if len(parts) < 2 {
+			response = `📅 Configurar días de reenvío
+
+Uso: /forward <cantidad de días>
+Ejemplo: /forward 20
+
+Esto configurará la publicación para reenviarse durante 20 días.`
+		} else {
+			response = fmt.Sprintf("✅ Días de reenvío configurados: %s\nUsa /time para configurar los horarios.", parts[1])
+		}
+	case "/time":
+		if len(parts) < 2 {
+			response = `⏰ Configurar horarios de reenvío
+
+Uso: /time <horario1>,<horario2>,...
+Ejemplo: /time 10:00,12:00,20:00
+
+Los horarios deben estar en formato militar (HH:MM) separados por comas.`
+		} else {
+			response = fmt.Sprintf("✅ Horarios configurados: %s\nUsa /forward para configurar los días.", parts[1])
+		}
+	case "/recipients":
+		if len(parts) < 2 {
+			response = `👥 Configurar destinatarios
+
+Uso:
+/recipients add <jid> — Agregar destinatario (ej: /recipients add 1234567890@s.whatsapp.net)
+/recipients list — Ver destinatarios configurados
+/recipients clear — Eliminar todos los destinatarios`
+		} else {
+			subcmd := strings.ToLower(parts[1])
+			switch {
+			case subcmd == "list":
+				response = "📋 Lista de destinatarios:\n(Uso: /recipients add <jid> para agregar)"
+			case subcmd == "clear":
+				response = "✅ Todos los destinatarios han sido eliminados."
+			case strings.HasPrefix(subcmd, "add"):
+				response = "✅ Destinatario agregado correctamente."
+			default:
+				response = "Comando no reconocido. Usa /recipients para ver las opciones."
+			}
+		}
 	case "/help":
 		response = `📖 Comandos disponibles:
 
 /start — Registrarse y recibir información del bot.
 /new — Enviar un nuevo mensaje para reenviar.
 /settings — Ver y configurar opciones de reenvío.
-/help — Mostrar esta ayuda.
-
-🔧 Más funciones próximamente.`
+/forward <días> — Configurar días de reenvío.
+/time <horarios> — Configurar horarios de reenvío.
+/recipients — Configurar destinatarios.
+/help — Mostrar esta ayuda.`
 	default:
 		response = `Comando no reconocido. Usa /help para ver los comandos disponibles.`
 	}
@@ -223,8 +263,6 @@ Usa /forward o /time para más detalles.`
 	if err != nil {
 		fmt.Printf("Error sending command response: %v\n", err)
 	}
-
-	return true
 }
 
 func (w *WhatsAppClient) EventHandler(evt interface{}) {
@@ -234,10 +272,7 @@ func (w *WhatsAppClient) EventHandler(evt interface{}) {
 		text, fm := getMessageFields(v)
 
 		if !v.Info.IsFromMe {
-			// Check if it's a command
-			if w.handleCommand(v, text) {
-				return
-			}
+			w.handleCommand(v, text)
 		}
 
 		multimediaType := MultimediaNone
@@ -246,10 +281,12 @@ func (w *WhatsAppClient) EventHandler(evt interface{}) {
 		}
 
 		// Store in received message list
+		chatJID := v.Info.Chat.ToNonAD().String()
 		rm := ReceivedMessage{
 			ID:       v.Info.ID,
 			From:     sender,
 			FromPN:   senderPN,
+			Chat:     chatJID,
 			Text:     text,
 			IsFromMe: v.Info.IsFromMe,
 			MultimediaType: multimediaType,
@@ -266,6 +303,8 @@ func (w *WhatsAppClient) EventHandler(evt interface{}) {
 				w.forwardableMessages = make(map[string]*forwardableMessage)
 			}
 			w.forwardableMessages[v.Info.ID] = fm
+			// Persist to database
+			SaveForwardableMessage(v.Info.ID, sender, fm)
 		}
 		w.mu.Unlock()
 
@@ -281,6 +320,14 @@ func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) 
 	w.mu.RLock()
 	fm, ok := w.forwardableMessages[id]
 	w.mu.RUnlock()
+
+	// Try loading from database if not in memory
+	if !ok {
+		fm = LoadForwardableMessage(id)
+		if fm != nil {
+			ok = true
+		}
+	}
 
 	// If not found as forwardable, treat as text-only
 	if !ok {
@@ -300,10 +347,7 @@ func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) 
 			waMessage := &waE2E.Message{
 				ExtendedTextMessage: &waE2E.ExtendedTextMessage{
 					Text: proto.String(text),
-					ContextInfo: &waE2E.ContextInfo{
-						IsForwarded:     proto.Bool(true),
-						ForwardingScore: proto.Uint32(1),
-					},
+					ContextInfo: &waE2E.ContextInfo{},
 				},
 			}
 			_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)

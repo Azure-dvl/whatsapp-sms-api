@@ -12,6 +12,7 @@ import (
 func main() {
 	godotenv.Load()
 	fmt.Println("Starting connect the WhatsappApi")
+	whatsapp.InitDB()
 	whatsAppClient := whatsapp.NewWhatsAppClient()
 	go whatsAppClient.Connect()
 
