@@ -1,6 +1,14 @@
 package whatsapp
 
 import (
+	"io"
+	"log"
+	"net/http"
+	"strings"
+
+	"main/http/models"
+
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
@@ -16,8 +24,11 @@ func (w *WhatsAppClient) SendMessage(number string, message string) error {
 	}
 
 	msg, err := w.Client.SendMessage(w.Ctx, jid, waMessage)
+	if err != nil {
+		return err
+	}
 	lastMessageId = msg.ID
-	return err
+	return nil
 }
 
 func (w *WhatsAppClient) SendReaction(number string, reaction string) error {
@@ -25,4 +36,141 @@ func (w *WhatsAppClient) SendReaction(number string, reaction string) error {
 	message := w.Client.BuildReaction(target, w.Client.Store.GetJID(), lastMessageId, reaction)
 	_, err := w.Client.SendMessage(w.Ctx, target, message)
 	return err
+}
+
+func parseJID(raw string) (types.JID, error) {
+	raw = strings.TrimPrefix(raw, "+")
+	if strings.HasSuffix(raw, "@g.us") {
+		return types.NewJID(strings.TrimSuffix(raw, "@g.us"), types.GroupServer), nil
+	}
+	if strings.HasSuffix(raw, "@newsletter") {
+		return types.NewJID(strings.TrimSuffix(raw, "@newsletter"), types.NewsletterServer), nil
+	}
+	number := strings.TrimSuffix(raw, "@s.whatsapp.net")
+	return types.NewJID(number, types.DefaultUserServer), nil
+}
+
+func (w *WhatsAppClient) ForwardMessage(req models.ForwardRequest) []models.ForwardResult {
+	results := make([]models.ForwardResult, 0, len(req.Recipients))
+
+	var imageBytes []byte
+	var imageMimeType string
+	var imageCaption string
+
+	if req.Image != nil && req.Image.URL != "" {
+		resp, err := http.Get(req.Image.URL)
+		if err != nil {
+			for _, recipient := range req.Recipients {
+				results = append(results, models.ForwardResult{
+					Recipient: recipient,
+					Success:   false,
+					Error:     "Failed to download image: " + err.Error(),
+				})
+			}
+			return results
+		}
+		defer resp.Body.Close()
+
+		imageBytes, err = io.ReadAll(resp.Body)
+		if err != nil {
+			for _, recipient := range req.Recipients {
+				results = append(results, models.ForwardResult{
+					Recipient: recipient,
+					Success:   false,
+					Error:     "Failed to read image: " + err.Error(),
+				})
+			}
+			return results
+		}
+
+		imageMimeType = req.Image.MimeType
+		if imageMimeType == "" {
+			imageMimeType = resp.Header.Get("Content-Type")
+			if imageMimeType == "" {
+				imageMimeType = "image/png"
+			}
+		}
+
+		imageCaption = req.Image.Caption
+	}
+
+	for _, recipient := range req.Recipients {
+		result := models.ForwardResult{Recipient: recipient}
+
+		jid, err := parseJID(recipient)
+		if err != nil {
+			result.Success = false
+			result.Error = "Invalid recipient JID: " + err.Error()
+			results = append(results, result)
+			continue
+		}
+
+		if imageBytes != nil {
+			uploadResp, err := w.Client.Upload(w.Ctx, imageBytes, whatsmeow.MediaImage)
+			if err != nil {
+				result.Success = false
+				result.Error = "Failed to upload image: " + err.Error()
+				results = append(results, result)
+				continue
+			}
+
+			msgText := req.Message
+			if msgText == "" {
+				msgText = imageCaption
+			} else if imageCaption != "" {
+				msgText = req.Message + "\n" + imageCaption
+			}
+
+			waMessage := &waE2E.Message{
+				ImageMessage: &waE2E.ImageMessage{
+					URL:           &uploadResp.URL,
+					DirectPath:    &uploadResp.DirectPath,
+					MediaKey:      uploadResp.MediaKey,
+					FileEncSHA256: uploadResp.FileEncSHA256,
+					FileSHA256:    uploadResp.FileSHA256,
+					FileLength:    &uploadResp.FileLength,
+					Mimetype:      proto.String(imageMimeType),
+					Caption:       proto.String(msgText),
+					ContextInfo: &waE2E.ContextInfo{
+						IsForwarded:     proto.Bool(true),
+						ForwardingScore: proto.Uint32(1),
+					},
+				},
+			}
+
+			_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)
+			if err != nil {
+				result.Success = false
+				result.Error = err.Error()
+			} else {
+				result.Success = true
+			}
+		} else {
+			waMessage := &waE2E.Message{
+				ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+					Text: proto.String(req.Message),
+					ContextInfo: &waE2E.ContextInfo{
+						IsForwarded:     proto.Bool(true),
+						ForwardingScore: proto.Uint32(1),
+					},
+				},
+			}
+
+			_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)
+			if err != nil {
+				result.Success = false
+				result.Error = err.Error()
+			} else {
+				result.Success = true
+			}
+		}
+
+		results = append(results, result)
+	}
+
+	return results
+}
+
+func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }

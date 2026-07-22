@@ -17,9 +17,9 @@ func SmsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if whatAppClient == nil {
-		resp := models.SendMessageResponse{Success: false, Message: "WhatsApp client not initialized"}
-		w.WriteHeader(http.StatusInternalServerError)
+	if !isClientReady() {
+		resp := models.SendMessageResponse{Success: false, Message: "WhatsApp client not connected yet. Scan the QR code first."}
+		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
