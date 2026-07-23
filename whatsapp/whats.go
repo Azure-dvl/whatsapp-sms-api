@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 
 	"main/http/models"
@@ -167,113 +166,11 @@ func (w *WhatsAppClient) GetReceivedMessages() []ReceivedMessage {
 	return result
 }
 
-func (w *WhatsAppClient) handleCommand(v *events.Message, text string) {
-	if !strings.HasPrefix(text, "/") {
-		return
-	}
-
-	var response string
-	parts := strings.SplitN(text, " ", 2)
-	command := strings.ToLower(parts[0])
-
-	switch command {
-	case "/start":
-		response = `¡Bienvenido! 🎉
-
-Soy un bot diseñado para ayudarte a promocionar tus productos de venta online. Conmigo podrás reenviar tus publicaciones a múltiples grupos y canales de forma automática.
-
-📌 Usa /new para comenzar a reenviar un mensaje.
-📌 Usa /settings para configurar los grupos, canales y horarios.
-📌 Usa /help para ver la lista de comandos disponibles.
-
-¡Tu número ha sido registrado! Ahora puedes usar /new para empezar.`
-	case "/new":
-		response = `Esperando el mensaje que se va a reenviar... 📨
-
-Envíame el mensaje (texto o imagen) que quieres publicar en los grupos y canales configurados.`
-	case "/settings":
-		response = `⚙️ Configuración — Opciones disponibles:
-
-/forward <días> — Cantidad de días que se repetirá la publicación (ej: /forward 20).
-/time <horarios> — Horarios de reenvío en formato militar separados por coma (ej: /time 10:00,12:00,20:00).
-/recipients — Configurar destinatarios (grupos, canales, números).
-
-Usa cada comando para más detalles.`
-	case "/forward":
-		if len(parts) < 2 {
-			response = `📅 Configurar días de reenvío
-
-Uso: /forward <cantidad de días>
-Ejemplo: /forward 20
-
-Esto configurará la publicación para reenviarse durante 20 días.`
-		} else {
-			response = fmt.Sprintf("✅ Días de reenvío configurados: %s\nUsa /time para configurar los horarios.", parts[1])
-		}
-	case "/time":
-		if len(parts) < 2 {
-			response = `⏰ Configurar horarios de reenvío
-
-Uso: /time <horario1>,<horario2>,...
-Ejemplo: /time 10:00,12:00,20:00
-
-Los horarios deben estar en formato militar (HH:MM) separados por comas.`
-		} else {
-			response = fmt.Sprintf("✅ Horarios configurados: %s\nUsa /forward para configurar los días.", parts[1])
-		}
-	case "/recipients":
-		if len(parts) < 2 {
-			response = `👥 Configurar destinatarios
-
-Uso:
-/recipients add <jid> — Agregar destinatario (ej: /recipients add 1234567890@s.whatsapp.net)
-/recipients list — Ver destinatarios configurados
-/recipients clear — Eliminar todos los destinatarios`
-		} else {
-			subcmd := strings.ToLower(parts[1])
-			switch {
-			case subcmd == "list":
-				response = "📋 Lista de destinatarios:\n(Uso: /recipients add <jid> para agregar)"
-			case subcmd == "clear":
-				response = "✅ Todos los destinatarios han sido eliminados."
-			case strings.HasPrefix(subcmd, "add"):
-				response = "✅ Destinatario agregado correctamente."
-			default:
-				response = "Comando no reconocido. Usa /recipients para ver las opciones."
-			}
-		}
-	case "/help":
-		response = `📖 Comandos disponibles:
-
-/start — Registrarse y recibir información del bot.
-/new — Enviar un nuevo mensaje para reenviar.
-/settings — Ver y configurar opciones de reenvío.
-/forward <días> — Configurar días de reenvío.
-/time <horarios> — Configurar horarios de reenvío.
-/recipients — Configurar destinatarios.
-/help — Mostrar esta ayuda.`
-	default:
-		response = `Comando no reconocido. Usa /help para ver los comandos disponibles.`
-	}
-
-	targetJID := v.Info.Chat
-	_, err := w.Client.SendMessage(w.Ctx, targetJID, &waE2E.Message{
-		Conversation: proto.String(response),
-	})
-	if err != nil {
-		fmt.Printf("Error sending command response: %v\n", err)
-	}
-}
-
 func (w *WhatsAppClient) EventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
 		sender, senderPN := w.getSenderPN(v)
 		text, fm := getMessageFields(v)
-
-		if !v.Info.IsFromMe {
-			w.handleCommand(v, text)
-		}
 
 		multimediaType := MultimediaNone
 		if fm != nil && fm.imageURL != "" {

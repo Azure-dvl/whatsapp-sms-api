@@ -31,6 +31,24 @@ func (w *WhatsAppClient) SendMessage(number string, message string) error {
 	return nil
 }
 
+func (w *WhatsAppClient) SendMessageToJID(jidStr string, message string) error {
+	jid, err := parseJID(jidStr)
+	if err != nil {
+		return err
+	}
+
+	waMessage := &waE2E.Message{
+		Conversation: proto.String(message),
+	}
+
+	msg, err := w.Client.SendMessage(w.Ctx, jid, waMessage)
+	if err != nil {
+		return err
+	}
+	lastMessageId = msg.ID
+	return nil
+}
+
 func (w *WhatsAppClient) SendReaction(number string, reaction string) error {
 	target := types.NewJID(number, types.DefaultUserServer)
 	message := w.Client.BuildReaction(target, w.Client.Store.GetJID(), lastMessageId, reaction)
@@ -45,6 +63,9 @@ func parseJID(raw string) (types.JID, error) {
 	}
 	if strings.HasSuffix(raw, "@newsletter") {
 		return types.NewJID(strings.TrimSuffix(raw, "@newsletter"), types.NewsletterServer), nil
+	}
+	if strings.HasSuffix(raw, "@lid") {
+		return types.NewJID(strings.TrimSuffix(raw, "@lid"), "lid"), nil
 	}
 	number := strings.TrimSuffix(raw, "@s.whatsapp.net")
 	return types.NewJID(number, types.DefaultUserServer), nil
