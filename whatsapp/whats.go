@@ -194,15 +194,15 @@ func (w *WhatsAppClient) EventHandler(evt interface{}) {
 
 		w.mu.Lock()
 		w.receivedMessages = append(w.receivedMessages, rm)
-		// Also store the forwardable message data keyed by ID
-		if fm != nil {
-			if w.forwardableMessages == nil {
-				w.forwardableMessages = make(map[string]*forwardableMessage)
-			}
-			w.forwardableMessages[v.Info.ID] = fm
-			// Persist to database
-			SaveForwardableMessage(v.Info.ID, sender, fm)
+		// Always store forwardable data keyed by ID
+		if w.forwardableMessages == nil {
+			w.forwardableMessages = make(map[string]*forwardableMessage)
 		}
+		if fm == nil {
+			fm = &forwardableMessage{text: text}
+		}
+		w.forwardableMessages[v.Info.ID] = fm
+		SaveForwardableMessage(v.Info.ID, sender, fm)
 		w.mu.Unlock()
 
 		if !v.Info.IsFromMe {
