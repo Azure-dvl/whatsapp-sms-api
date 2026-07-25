@@ -36,7 +36,6 @@ type ReceivedMessage struct {
 	FromPN          string         `json:"from_pn,omitempty"`
 	Chat            string         `json:"chat,omitempty"`
 	Text            string         `json:"text"`
-	IsFromMe        bool           `json:"is_from_me"`
 	MultimediaType  MultimediaType `json:"multimedia_type,omitempty"`
 	MultimediaCaption string       `json:"multimedia_caption,omitempty"`
 }
@@ -169,6 +168,10 @@ func (w *WhatsAppClient) GetReceivedMessages() []ReceivedMessage {
 func (w *WhatsAppClient) EventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
+		if v.Info.IsFromMe {
+			return
+		}
+
 		sender, senderPN := w.getSenderPN(v)
 		text, fm := getMessageFields(v)
 
@@ -185,7 +188,6 @@ func (w *WhatsAppClient) EventHandler(evt interface{}) {
 			FromPN:   senderPN,
 			Chat:     chatJID,
 			Text:     text,
-			IsFromMe: v.Info.IsFromMe,
 			MultimediaType: multimediaType,
 		}
 		if fm != nil {
@@ -205,9 +207,7 @@ func (w *WhatsAppClient) EventHandler(evt interface{}) {
 		SaveForwardableMessage(v.Info.ID, sender, fm)
 		w.mu.Unlock()
 
-		if !v.Info.IsFromMe {
-			fmt.Printf("📩 Message from %s: %s\n", sender, text)
-		}
+		fmt.Printf("📩 Message from %s: %s\n", sender, text)
 	}
 }
 
@@ -280,6 +280,43 @@ func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) 
 		}
 	}
 	return results
+}
+
+func (w *WhatsAppClient) GetGroupsAndNewsletters() ([]models.GroupItem, error) {
+	var items []models.GroupItem
+	index := 1
+
+	groups, err := w.Client.GetJoinedGroups(w.Ctx)
+	if err == nil {
+		for _, g := range groups {
+			items = append(items, models.GroupItem{
+				Index: index,
+				Name:  g.Name,
+				JID:   g.JID.String(),
+				Type:  "group",
+			})
+			index++
+		}
+	}
+
+	newsletters, err := w.Client.GetSubscribedNewsletters(w.Ctx)
+	if err == nil {
+		for _, n := range newsletters {
+			name := n.ThreadMeta.Name.Text
+			if name == "" {
+				name = "Canal sin nombre"
+			}
+			items = append(items, models.GroupItem{
+				Index: index,
+				Name:  name,
+				JID:   n.ID.String(),
+				Type:  "channel",
+			})
+			index++
+		}
+	}
+
+	return items, nil
 }
 
 func (w *WhatsAppClient) Connect() {
