@@ -142,21 +142,37 @@ func (w *WhatsAppClient) ForwardMessage(req models.ForwardRequest) []models.Forw
 				msgText = req.Message + "\n" + imageCaption
 			}
 
-			waMessage := &waE2E.Message{
-				ImageMessage: &waE2E.ImageMessage{
-					URL:           &uploadResp.URL,
-					DirectPath:    &uploadResp.DirectPath,
-					MediaKey:      uploadResp.MediaKey,
-					FileEncSHA256: uploadResp.FileEncSHA256,
-					FileSHA256:    uploadResp.FileSHA256,
-					FileLength:    &uploadResp.FileLength,
-					Mimetype:      proto.String(imageMimeType),
-					Caption:       proto.String(msgText),
-					ContextInfo: &waE2E.ContextInfo{
-						IsForwarded:     proto.Bool(true),
-						ForwardingScore: proto.Uint32(1),
+			var waMessage *waE2E.Message
+			if isNewsletter(jid) {
+				waMessage = &waE2E.Message{
+					ImageMessage: &waE2E.ImageMessage{
+						URL:           &uploadResp.URL,
+						DirectPath:    &uploadResp.DirectPath,
+						MediaKey:      uploadResp.MediaKey,
+						FileEncSHA256: uploadResp.FileEncSHA256,
+						FileSHA256:    uploadResp.FileSHA256,
+						FileLength:    &uploadResp.FileLength,
+						Mimetype:      proto.String(imageMimeType),
+						Caption:       proto.String(msgText),
 					},
-				},
+				}
+			} else {
+				waMessage = &waE2E.Message{
+					ImageMessage: &waE2E.ImageMessage{
+						URL:           &uploadResp.URL,
+						DirectPath:    &uploadResp.DirectPath,
+						MediaKey:      uploadResp.MediaKey,
+						FileEncSHA256: uploadResp.FileEncSHA256,
+						FileSHA256:    uploadResp.FileSHA256,
+						FileLength:    &uploadResp.FileLength,
+						Mimetype:      proto.String(imageMimeType),
+						Caption:       proto.String(msgText),
+						ContextInfo: &waE2E.ContextInfo{
+							IsForwarded:     proto.Bool(true),
+							ForwardingScore: proto.Uint32(1),
+						},
+					},
+				}
 			}
 
 			_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)
@@ -167,14 +183,21 @@ func (w *WhatsAppClient) ForwardMessage(req models.ForwardRequest) []models.Forw
 				result.Success = true
 			}
 		} else {
-			waMessage := &waE2E.Message{
-				ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-					Text: proto.String(req.Message),
-					ContextInfo: &waE2E.ContextInfo{
-						IsForwarded:     proto.Bool(true),
-						ForwardingScore: proto.Uint32(1),
+			var waMessage *waE2E.Message
+			if isNewsletter(jid) {
+				waMessage = &waE2E.Message{
+					Conversation: proto.String(req.Message),
+				}
+			} else {
+				waMessage = &waE2E.Message{
+					ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+						Text: proto.String(req.Message),
+						ContextInfo: &waE2E.ContextInfo{
+							IsForwarded:     proto.Bool(true),
+							ForwardingScore: proto.Uint32(1),
+						},
 					},
-				},
+				}
 			}
 
 			_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)

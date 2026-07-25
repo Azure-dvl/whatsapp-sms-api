@@ -106,7 +106,7 @@ func (fm *forwardableMessage) buildMessage() *waE2E.Message {
 				JPEGThumbnail: fm.imageJPEGThumbnail,
 				Height:        &fm.imageHeight,
 				Width:         &fm.imageWidth,
-				ContextInfo: &waE2E.ContextInfo{},
+				ContextInfo:   &waE2E.ContextInfo{},
 			},
 		}
 	} else if fm.text != "" {
@@ -115,6 +115,38 @@ func (fm *forwardableMessage) buildMessage() *waE2E.Message {
 				Text: proto.String(fm.text),
 				ContextInfo: &waE2E.ContextInfo{},
 			},
+		}
+	}
+	return nil
+}
+
+func (fm *forwardableMessage) buildNewsletterMessage() *waE2E.Message {
+	msgText := fm.text
+	if msgText == "" {
+		msgText = fm.imageCaption
+	} else if fm.imageCaption != "" {
+		msgText = fm.text + "\n" + fm.imageCaption
+	}
+
+	if fm.imageURL != "" {
+		return &waE2E.Message{
+			ImageMessage: &waE2E.ImageMessage{
+				URL:           &fm.imageURL,
+				DirectPath:    &fm.imageDirectPath,
+				MediaKey:      fm.imageMediaKey,
+				FileEncSHA256: fm.imageFileEncSHA256,
+				FileSHA256:    fm.imageFileSHA256,
+				FileLength:    &fm.imageFileLength,
+				Mimetype:      proto.String(fm.imageMimeType),
+				Caption:       proto.String(msgText),
+				JPEGThumbnail: fm.imageJPEGThumbnail,
+				Height:        &fm.imageHeight,
+				Width:         &fm.imageWidth,
+			},
+		}
+	} else if fm.text != "" {
+		return &waE2E.Message{
+			Conversation: proto.String(fm.text),
 		}
 	}
 	return nil
@@ -211,6 +243,10 @@ func (w *WhatsAppClient) EventHandler(evt interface{}) {
 	}
 }
 
+func isNewsletter(jid types.JID) bool {
+	return jid.Server == types.NewsletterServer
+}
+
 func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) []models.ForwardResult {
 	results := make([]models.ForwardResult, 0, len(recipients))
 
@@ -241,11 +277,16 @@ func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) 
 				results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: err.Error()})
 				continue
 			}
-			waMessage := &waE2E.Message{
-				ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-					Text: proto.String(text),
-					ContextInfo: &waE2E.ContextInfo{},
-				},
+			var waMessage *waE2E.Message
+			if isNewsletter(jid) {
+				waMessage = &waE2E.Message{Conversation: proto.String(text)}
+			} else {
+				waMessage = &waE2E.Message{
+					ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+						Text: proto.String(text),
+						ContextInfo: &waE2E.ContextInfo{},
+					},
+				}
 			}
 			_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)
 			if err != nil {
@@ -257,21 +298,24 @@ func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) 
 		return results
 	}
 
-	// Forward using the original message content
-	waMessage := fm.buildMessage()
-	if waMessage == nil {
-		for _, recipient := range recipients {
-			results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: "Empty message"})
-		}
-		return results
-	}
-
 	for _, recipient := range recipients {
 		jid, err := parseJID(recipient)
 		if err != nil {
 			results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: err.Error()})
 			continue
 		}
+
+		var waMessage *waE2E.Message
+		if isNewsletter(jid) {
+			waMessage = fm.buildNewsletterMessage()
+		} else {
+			waMessage = fm.buildMessage()
+		}
+		if waMessage == nil {
+			results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: "Empty message"})
+			continue
+		}
+
 		_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)
 		if err != nil {
 			results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: err.Error()})
