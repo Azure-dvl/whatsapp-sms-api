@@ -32,14 +32,27 @@ func SmsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Phone == "" || req.Message == "" {
-		resp := models.SendMessageResponse{Success: false, Message: "Phone and message are required"}
+	if req.Chat == "" && req.Phone == "" {
+		resp := models.SendMessageResponse{Success: false, Message: "Phone or chat is required"}
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
 
-	err := whatAppClient.SendMessage(req.Phone, req.Message)
+	if req.Message == "" {
+		resp := models.SendMessageResponse{Success: false, Message: "Message is required"}
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	var err error
+	if req.Chat != "" {
+		err = whatAppClient.SendMessageToJID(req.Chat, req.Message)
+	} else {
+		err = whatAppClient.SendMessage(req.Phone, req.Message)
+	}
+
 	if err != nil {
 		resp := models.SendMessageResponse{Success: false, Message: err.Error()}
 		w.WriteHeader(http.StatusInternalServerError)
