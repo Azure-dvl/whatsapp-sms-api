@@ -28,6 +28,7 @@ func (w *WhatsAppClient) SendMessage(number string, message string) error {
 		return err
 	}
 	lastMessageId = msg.ID
+	w.recordSentMessage(msg.ID)
 	return nil
 }
 
@@ -46,6 +47,7 @@ func (w *WhatsAppClient) SendMessageToJID(jidStr string, message string) error {
 		return err
 	}
 	lastMessageId = msg.ID
+	w.recordSentMessage(msg.ID)
 	return nil
 }
 
@@ -175,11 +177,12 @@ func (w *WhatsAppClient) ForwardMessage(req models.ForwardRequest) []models.Forw
 				}
 			}
 
-			_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)
+			sentMsg, err := w.Client.SendMessage(w.Ctx, jid, waMessage)
 			if err != nil {
 				result.Success = false
 				result.Error = err.Error()
 			} else {
+				w.recordSentMessage(sentMsg.ID)
 				result.Success = true
 			}
 		} else {
@@ -200,11 +203,12 @@ func (w *WhatsAppClient) ForwardMessage(req models.ForwardRequest) []models.Forw
 				}
 			}
 
-			_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)
+			sentMsg, err := w.Client.SendMessage(w.Ctx, jid, waMessage)
 			if err != nil {
 				result.Success = false
 				result.Error = err.Error()
 			} else {
+				w.recordSentMessage(sentMsg.ID)
 				result.Success = true
 			}
 		}
