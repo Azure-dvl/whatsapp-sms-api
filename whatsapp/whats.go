@@ -179,6 +179,7 @@ type WhatsAppClient struct {
 	mu               sync.RWMutex
 	receivedMessages  []ReceivedMessage
 	forwardableMessages map[string]*forwardableMessage
+	sentMessageIDs    map[string]bool
 
 	Connected chan struct{}
 }
@@ -187,7 +188,26 @@ func NewWhatsAppClient() *WhatsAppClient {
 	return &WhatsAppClient{
 		Connected:          make(chan struct{}),
 		forwardableMessages: make(map[string]*forwardableMessage),
+		sentMessageIDs:     make(map[string]bool),
 	}
+}
+
+func (w *WhatsAppClient) recordSentMessage(id string) {
+	if id == "" {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(w.sentMessageIDs) > 5000 {
+		w.sentMessageIDs = make(map[string]bool)
+	}
+	w.sentMessageIDs[id] = true
+}
+
+func (w *WhatsAppClient) wasSentByBot(id string) bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.sentMessageIDs[id]
 }
 
 func (w *WhatsAppClient) GetReceivedMessages() []ReceivedMessage {
@@ -289,10 +309,11 @@ func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) 
 					},
 				}
 			}
-			_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)
+			sentMsg, err := w.Client.SendMessage(w.Ctx, jid, waMessage)
 			if err != nil {
 				results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: err.Error()})
 			} else {
+				w.recordSentMessage(sentMsg.ID)
 				results = append(results, models.ForwardResult{Recipient: recipient, Success: true})
 			}
 		}
@@ -321,6 +342,7 @@ func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) 
 		if err != nil {
 			results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: err.Error()})
 		} else {
+			w.recordSentMessage(sentMsg.ID)
 			results = append(results, models.ForwardResult{Recipient: recipient, Success: true})
 		}
 	}
