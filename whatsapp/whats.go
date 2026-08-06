@@ -241,6 +241,7 @@ func (w *WhatsAppClient) EventHandler(evt interface{}) {
 			FromPN:   senderPN,
 			Chat:     chatJID,
 			Text:     text,
+			IsFromMe: v.Info.IsFromMe,
 			MultimediaType: multimediaType,
 		}
 		if fm != nil {
