@@ -221,7 +221,7 @@ func (w *WhatsAppClient) GetReceivedMessages() []ReceivedMessage {
 func (w *WhatsAppClient) EventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
-		if v.Info.IsFromMe && w.wasSentByBot(v.Info.ID) {
+		if v.Info.IsFromMe {
 			return
 		}
 
@@ -241,7 +241,6 @@ func (w *WhatsAppClient) EventHandler(evt interface{}) {
 			FromPN:   senderPN,
 			Chat:     chatJID,
 			Text:     text,
-			IsFromMe: v.Info.IsFromMe,
 			MultimediaType: multimediaType,
 		}
 		if fm != nil {
@@ -339,7 +338,7 @@ func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) 
 			continue
 		}
 
-		sentMsg, err := w.Client.SendMessage(w.Ctx, jid, waMessage)
+		_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)
 		if err != nil {
 			results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: err.Error()})
 		} else {
