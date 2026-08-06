@@ -36,6 +36,7 @@ type ReceivedMessage struct {
 	FromPN          string         `json:"from_pn,omitempty"`
 	Chat            string         `json:"chat,omitempty"`
 	Text            string         `json:"text"`
+	IsFromMe        bool           `json:"is_from_me"`
 	MultimediaType  MultimediaType `json:"multimedia_type,omitempty"`
 	MultimediaCaption string       `json:"multimedia_caption,omitempty"`
 }
