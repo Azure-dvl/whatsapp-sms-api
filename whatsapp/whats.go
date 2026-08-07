@@ -338,7 +338,7 @@ func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) 
 			continue
 		}
 
-		_, err = w.Client.SendMessage(w.Ctx, jid, waMessage)
+		sentMsg, err := w.Client.SendMessage(w.Ctx, jid, waMessage)
 		if err != nil {
 			results = append(results, models.ForwardResult{Recipient: recipient, Success: false, Error: err.Error()})
 		} else {
