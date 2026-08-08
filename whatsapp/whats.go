@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"main/http/models"
 
@@ -180,15 +181,19 @@ type WhatsAppClient struct {
 	receivedMessages  []ReceivedMessage
 	forwardableMessages map[string]*forwardableMessage
 	sentMessageIDs    map[string]bool
+	recentSelf        map[string]time.Time
 
 	Connected chan struct{}
 }
+
+const selfDedupWindow = 30 * time.Second
 
 func NewWhatsAppClient() *WhatsAppClient {
 	return &WhatsAppClient{
 		Connected:          make(chan struct{}),
 		forwardableMessages: make(map[string]*forwardableMessage),
 		sentMessageIDs:     make(map[string]bool),
+		recentSelf:         make(map[string]time.Time),
 	}
 }
 
@@ -221,7 +226,10 @@ func (w *WhatsAppClient) GetReceivedMessages() []ReceivedMessage {
 func (w *WhatsAppClient) EventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
-		if v.Info.IsFromMe {
+		// Ignorar SOLO los mensajes que el propio bot envió (sus respuestas).
+		// Los mensajes que el usuario escribe manualmente desde su número
+		// (incluido el chat consigo mismo) sí deben procesarse.
+		if v.Info.IsFromMe && w.wasSentByBot(v.Info.ID) {
 			return
 		}
 
@@ -235,12 +243,24 @@ func (w *WhatsAppClient) EventHandler(evt interface{}) {
 
 		// Store in received message list
 		chatJID := v.Info.Chat.ToNonAD().String()
+		if v.Info.IsFromMe {
+			now := time.Now()
+			key := sender + "|" + chatJID + "|" + text
+			w.mu.Lock()
+			if last, ok := w.recentSelf[key]; ok && now.Sub(last) < selfDedupWindow {
+				w.mu.Unlock()
+				return
+			}
+			w.recentSelf[key] = now
+			w.mu.Unlock()
+		}
 		rm := ReceivedMessage{
-			ID:       v.Info.ID,
-			From:     sender,
-			FromPN:   senderPN,
-			Chat:     chatJID,
-			Text:     text,
+			ID:             v.Info.ID,
+			From:           sender,
+			FromPN:         senderPN,
+			Chat:           chatJID,
+			Text:           text,
+			IsFromMe:       v.Info.IsFromMe,
 			MultimediaType: multimediaType,
 		}
 		if fm != nil {
