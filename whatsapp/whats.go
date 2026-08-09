@@ -24,22 +24,22 @@ import (
 type MultimediaType string
 
 const (
-	MultimediaNone  MultimediaType = ""
-	MultimediaImage MultimediaType = "image"
-	MultimediaVideo MultimediaType = "video"
-	MultimediaAudio MultimediaType = "audio"
+	MultimediaNone     MultimediaType = ""
+	MultimediaImage    MultimediaType = "image"
+	MultimediaVideo    MultimediaType = "video"
+	MultimediaAudio    MultimediaType = "audio"
 	MultimediaDocument MultimediaType = "document"
 )
 
 type ReceivedMessage struct {
-	ID              string         `json:"id"`
-	From            string         `json:"from"`
-	FromPN          string         `json:"from_pn,omitempty"`
-	Chat            string         `json:"chat,omitempty"`
-	Text            string         `json:"text"`
-	IsFromMe        bool           `json:"is_from_me"`
-	MultimediaType  MultimediaType `json:"multimedia_type,omitempty"`
-	MultimediaCaption string       `json:"multimedia_caption,omitempty"`
+	ID                string         `json:"id"`
+	From              string         `json:"from"`
+	FromPN            string         `json:"from_pn,omitempty"`
+	Chat              string         `json:"chat,omitempty"`
+	Text              string         `json:"text"`
+	IsFromMe          bool           `json:"is_from_me"`
+	MultimediaType    MultimediaType `json:"multimedia_type,omitempty"`
+	MultimediaCaption string         `json:"multimedia_caption,omitempty"`
 }
 
 type forwardableMessage struct {
@@ -62,7 +62,6 @@ func getMessageFields(v *events.Message) (text string, fm *forwardableMessage) {
 	if text == "" && v.Message.GetExtendedTextMessage() != nil {
 		text = v.Message.GetExtendedTextMessage().GetText()
 	}
-	
 
 	if img := v.Message.GetImageMessage(); img != nil {
 		fm = &forwardableMessage{
@@ -114,7 +113,7 @@ func (fm *forwardableMessage) buildMessage() *waE2E.Message {
 	} else if fm.text != "" {
 		return &waE2E.Message{
 			ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-				Text: proto.String(fm.text),
+				Text:        proto.String(fm.text),
 				ContextInfo: &waE2E.ContextInfo{},
 			},
 		}
@@ -177,11 +176,11 @@ type WhatsAppClient struct {
 	Client *whatsmeow.Client
 	Ctx    context.Context
 
-	mu               sync.RWMutex
-	receivedMessages  []ReceivedMessage
+	mu                  sync.RWMutex
+	receivedMessages    []ReceivedMessage
 	forwardableMessages map[string]*forwardableMessage
-	sentMessageIDs    map[string]bool
-	recentSelf        map[string]time.Time
+	sentMessageIDs      map[string]bool
+	recentSelf          map[string]time.Time
 
 	Connected chan struct{}
 }
@@ -190,10 +189,10 @@ const selfDedupWindow = 30 * time.Second
 
 func NewWhatsAppClient() *WhatsAppClient {
 	return &WhatsAppClient{
-		Connected:          make(chan struct{}),
+		Connected:           make(chan struct{}),
 		forwardableMessages: make(map[string]*forwardableMessage),
-		sentMessageIDs:     make(map[string]bool),
-		recentSelf:         make(map[string]time.Time),
+		sentMessageIDs:      make(map[string]bool),
+		recentSelf:          make(map[string]time.Time),
 	}
 }
 
@@ -229,9 +228,9 @@ func (w *WhatsAppClient) EventHandler(evt interface{}) {
 		// Ignorar SOLO los mensajes que el propio bot envió (sus respuestas).
 		// Los mensajes que el usuario escribe manualmente desde su número
 		// (incluido el chat consigo mismo) sí deben procesarse.
-		if v.Info.IsFromMe && w.wasSentByBot(v.Info.ID) {
-			return
-		}
+		// if v.Info.IsFromMe && w.wasSentByBot(v.Info.ID) {
+		// 	return
+		// }
 
 		sender, senderPN := w.getSenderPN(v)
 		text, fm := getMessageFields(v)
@@ -324,7 +323,7 @@ func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) 
 			} else {
 				waMessage = &waE2E.Message{
 					ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-						Text: proto.String(text),
+						Text:        proto.String(text),
 						ContextInfo: &waE2E.ContextInfo{},
 					},
 				}
