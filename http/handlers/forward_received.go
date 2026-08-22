@@ -46,7 +46,7 @@ func ForwardReceivedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results := whatAppClient.ForwardReceivedMessage(req.MessageID, req.Recipients)
+	results := whatAppClient.ForwardReceivedMessage(req.MessageID, req.Recipients, req.CaptionOverride)
 
 	allSuccess := true
 	for _, res := range results {

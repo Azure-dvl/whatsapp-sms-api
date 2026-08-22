@@ -287,7 +287,7 @@ func isNewsletter(jid types.JID) bool {
 	return jid.Server == types.NewsletterServer
 }
 
-func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) []models.ForwardResult {
+func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string, captionOverride *string) []models.ForwardResult {
 	results := make([]models.ForwardResult, 0, len(recipients))
 
 	w.mu.RLock()
@@ -300,6 +300,13 @@ func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string) 
 		if fm != nil {
 			ok = true
 		}
+	}
+
+	// Apply caption override for image messages if provided
+	if ok && captionOverride != nil && fm.imageURL != "" {
+		clone := *fm
+		clone.imageCaption = *captionOverride
+		fm = &clone
 	}
 
 	// If not found as forwardable, treat as text-only
