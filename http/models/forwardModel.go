@@ -13,8 +13,9 @@ type ForwardRequest struct {
 }
 
 type ForwardReceivedRequest struct {
-	MessageID  string   `json:"message_id"`
-	Recipients []string `json:"recipients"`
+	MessageID       string   `json:"message_id"`
+	Recipients      []string `json:"recipients"`
+	CaptionOverride *string  `json:"caption_override,omitempty"`
 }
 
 type ForwardResult struct {
