@@ -375,13 +375,30 @@ func (w *WhatsAppClient) ForwardReceivedMessage(id string, recipients []string, 
 	return results
 }
 
+// canWriteGroup reports whether the bot is allowed to send messages to the group.
+func canWriteGroup(g *types.GroupInfo, botJID types.JID) bool {
+	if !g.IsAnnounce {
+		return true
+	}
+	for _, p := range g.Participants {
+		if p.JID.ToNonAD() == botJID && (p.IsAdmin || p.IsSuperAdmin) {
+			return true
+		}
+	}
+	return false
+}
+
 func (w *WhatsAppClient) GetGroupsAndNewsletters() ([]models.GroupItem, error) {
 	var items []models.GroupItem
 	index := 1
 
 	groups, err := w.Client.GetJoinedGroups(w.Ctx)
 	if err == nil {
+		botJID := w.Client.Store.ID.ToNonAD()
 		for _, g := range groups {
+			if !canWriteGroup(g, botJID) {
+				continue
+			}
 			items = append(items, models.GroupItem{
 				Index: index,
 				Name:  g.Name,
@@ -395,6 +412,9 @@ func (w *WhatsAppClient) GetGroupsAndNewsletters() ([]models.GroupItem, error) {
 	newsletters, err := w.Client.GetSubscribedNewsletters(w.Ctx)
 	if err == nil {
 		for _, n := range newsletters {
+			if n.ViewerMeta == nil || (n.ViewerMeta.Role != types.NewsletterRoleAdmin && n.ViewerMeta.Role != types.NewsletterRoleOwner) {
+				continue
+			}
 			name := n.ThreadMeta.Name.Text
 			if name == "" {
 				name = "Canal sin nombre"
