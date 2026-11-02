@@ -76,6 +76,7 @@ func getMessageFields(v *events.Message) (text string, fm *forwardableMessage) {
 			imageFileLength:    img.GetFileLength(),
 			imageMimeType:      img.GetMimetype(),
 			imageCaption:       img.GetCaption(),
+			imageJPEGThumbnail: img.GetJPEGThumbnail(),
 			imageHeight:        img.GetHeight(),
 			imageWidth:         img.GetWidth(),
 		}
